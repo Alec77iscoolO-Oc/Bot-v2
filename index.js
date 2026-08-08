@@ -11,43 +11,97 @@ const {
 } = require("./commands");
 
 const config = require("./config");
-
 const pino = require("pino");
-const qrcode = require("qrcode-terminal");
 
+
+// =========================================
+// BOT STARTEN
+// =========================================
 
 async function startBot() {
 
     const {
         state,
         saveCreds
-    } = await useMultiFileAuthState(
-        "./auth"
-    );
+    } = await useMultiFileAuthState("./auth");
 
 
-    const sock =
-        makeWASocket({
+    const sock = makeWASocket({
 
-            auth: state,
+        auth: state,
 
-            logger:
-                pino({
-                    level: "silent"
-                }),
+        logger: pino({
+            level: "silent"
+        }),
 
-            printQRInTerminal: false
-        });
+        printQRInTerminal: false
+    });
 
 
     // =====================================
-    // LOGIN DATEN SPEICHERN
+    // ANMELDEDATEN SPEICHERN
     // =====================================
 
     sock.ev.on(
         "creds.update",
         saveCreds
     );
+
+
+    // =====================================
+    // WHATSAPP PAIRING CODE
+    // =====================================
+
+    if (!state.creds.registered) {
+
+        const phoneNumber =
+            process.env.PHONE_NUMBER;
+
+        if (!phoneNumber) {
+
+            console.error(
+                "❌ PHONE_NUMBER wurde in Railway nicht gesetzt!"
+            );
+
+        } else {
+
+            setTimeout(async () => {
+
+                try {
+
+                    const code =
+                        await sock.requestPairingCode(
+                            phoneNumber
+                        );
+
+                    console.log(
+                        "================================"
+                    );
+
+                    console.log(
+                        "📱 WHATSAPP PAIRING CODE"
+                    );
+
+                    console.log(
+                        code
+                    );
+
+                    console.log(
+                        "================================"
+                    );
+
+                } catch (error) {
+
+                    console.error(
+                        "❌ Pairing-Code konnte nicht erstellt werden:",
+                        error
+                    );
+
+                }
+
+            }, 3000);
+        }
+    }
 
 
     // =====================================
@@ -60,25 +114,13 @@ async function startBot() {
 
             const {
                 connection,
-                lastDisconnect,
-                qr
+                lastDisconnect
             } = update;
 
 
-            if (qr) {
-
-                console.log(
-                    "\n📱 Scanne diesen QR-Code mit WhatsApp:\n"
-                );
-
-                qrcode.generate(
-                    qr,
-                    {
-                        small: true
-                    }
-                );
-            }
-
+            // ---------------------------------
+            // BOT ONLINE
+            // ---------------------------------
 
             if (connection === "open") {
 
@@ -99,6 +141,10 @@ async function startBot() {
                 );
             }
 
+
+            // ---------------------------------
+            // VERBINDUNG GETRENNT
+            // ---------------------------------
 
             if (connection === "close") {
 
@@ -182,9 +228,9 @@ async function startBot() {
                 if (!text) return;
 
 
-                // =====================================
-                // ANTI-LINK AUTOMATISCH
-                // =====================================
+                // =================================
+                // AUTOMATISCHER ANTI-LINK
+                // =================================
 
                 if (
                     isGroup(jid)
@@ -200,9 +246,9 @@ async function startBot() {
                 }
 
 
-                // =====================================
+                // =================================
                 // PREFIX
-                // =====================================
+                // =================================
 
                 if (
                     !text.startsWith(
@@ -240,6 +286,10 @@ async function startBot() {
                 const args =
                     parts;
 
+
+                // =================================
+                // BEFEHL AUSFÜHREN
+                // =================================
 
                 await handleCommand(
                     sock,
@@ -294,16 +344,21 @@ async function handleAutomaticAntiLink(
     }
 
 
-    // Admins dürfen weiterhin Links schicken
+    // =====================================
+    // ADMINPRÜFUNG
+    // =====================================
+
     try {
 
         const metadata =
             await sock.groupMetadata(jid);
 
+
         const participant =
             metadata.participants.find(
                 p => p.id === sender
             );
+
 
         const admin =
             participant &&
@@ -312,6 +367,8 @@ async function handleAutomaticAntiLink(
                 participant.admin === "superadmin"
             );
 
+
+        // Admins dürfen Links schicken
         if (admin) {
             return;
         }
@@ -325,6 +382,10 @@ async function handleAutomaticAntiLink(
     }
 
 
+    // =====================================
+    // LINK LÖSCHEN
+    // =====================================
+
     try {
 
         await sock.sendMessage(
@@ -333,6 +394,7 @@ async function handleAutomaticAntiLink(
                 delete: message.key
             }
         );
+
 
         await sock.sendMessage(
             jid,
@@ -352,5 +414,9 @@ async function handleAutomaticAntiLink(
     }
 }
 
+
+// =========================================
+// BOT STARTEN
+// =========================================
 
 startBot();
